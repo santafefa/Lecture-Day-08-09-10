@@ -59,8 +59,8 @@ def main() -> int:
     try:
         col = client.get_collection(name=collection_name, embedding_function=emb)
     except Exception as e:
-        print(f"Collection error: {e}", file=sys.stderr)
-        return 2
+        print(f"Collection '{collection_name}' chưa tồn tại. Hãy chạy etl_pipeline.py trước.", file=sys.stderr)
+        return 1
 
     out_path = Path(args.out)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -69,6 +69,8 @@ def main() -> int:
         "question_id",
         "question",
         "top1_doc_id",
+        "top1_run_id",
+        "top1_effective_date",
         "top1_preview",
         "contains_expected",
         "hits_forbidden",
@@ -79,11 +81,15 @@ def main() -> int:
         w = csv.DictWriter(fcsv, fieldnames=fieldnames)
         w.writeheader()
         for q in questions:
-            text = q["question"]
+            text = q.get("question", "")
+            if not text:
+                continue
             res = col.query(query_texts=[text], n_results=args.top_k)
             docs = (res.get("documents") or [[]])[0]
             metas = (res.get("metadatas") or [[]])[0]
             top_doc = (metas[0] or {}).get("doc_id", "") if metas else ""
+            top_run_id = (metas[0] or {}).get("run_id", "") if metas else ""
+            top_eff_date = (metas[0] or {}).get("effective_date", "") if metas else ""
             preview = (docs[0] or "")[:180].replace("\n", " ") if docs else ""
             blob = " ".join(docs).lower()
             must_any = [x.lower() for x in q.get("must_contain_any", [])]
@@ -99,6 +105,8 @@ def main() -> int:
                     "question_id": q.get("id", ""),
                     "question": text,
                     "top1_doc_id": top_doc,
+                    "top1_run_id": top_run_id,
+                    "top1_effective_date": top_eff_date,
                     "top1_preview": preview,
                     "contains_expected": "yes" if ok_any else "no",
                     "hits_forbidden": "yes" if bad_forb else "no",
